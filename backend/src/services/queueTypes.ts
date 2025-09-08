@@ -1,46 +1,21 @@
-import { CreateCampaignData } from '../models/Campaign';
+import { ConversationData } from '../types/conversation';
+
+export { ConversationData };
 
 // Campaign status types
 export type CampaignStatus = 
   | 'draft'          // Initial state
   | 'validating'     // Data validation in progress
+  | 'pending'        // Waiting to be processed
   | 'searching'      // Finding candidates (PDL search)
+  | 'processing'     // General processing state
   | 'generating'     // Creating email content
   | 'sending'        // Actively sending emails
   | 'paused'         // Manually paused
+  | 'active'         // Currently active and processing
+  | 'partial'        // Partially completed
   | 'completed'      // All emails sent
   | 'failed';        // Processing failed
-
-// Conversation data structure for user interaction
-export interface ConversationData {
-  // Base required fields for all outreach types
-  outreach_type: 'sales' | 'recruiting';
-  user_title: string;
-  user_company: string;
-  user_mission: string;
-  
-  // Optional fields for recruiting
-  role_title?: string;
-  skills?: string[];  // Using string[] to match usage in the codebase
-  experience_level?: 'junior' | 'mid' | 'senior' | 'lead';
-  
-  // Optional fields for sales
-  buyer_title?: string;
-  pain_point?: string;
-  
-  // Optional fields for both
-  company_size?: string;
-  industry?: string;
-  location?: string;
-  
-  // Template and placeholders
-  subjectTemplate?: string;
-  bodyTemplate?: string;
-  placeholders?: Record<string, string>;
-  
-  // Additional metadata
-  additional_variables?: Record<string, any>;
-}
 
 // Validation types
 export interface ValidationError {
@@ -59,7 +34,7 @@ export interface ValidationResult {
 export interface CampaignJobData {
   campaignId: string;
   userId: string;
-  conversationData: any; // Will be typed more specifically later
+  conversationData: ConversationData;
 }
 
 // Types for email sending queue

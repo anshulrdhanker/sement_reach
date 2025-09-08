@@ -626,34 +626,34 @@ Thanks,
       }
 
       const campaign = await response.json();
-      console.log('Campaign status:', campaign.status, campaign);
+      console.log('[FE] Campaign status:', campaign.status);
+      console.log('[FE] RAW campaign payload:', JSON.stringify(campaign, null, 2));
       
       if (campaign.status === 'completed' || campaign.status === 'partial') {
         // Use results or fall back to candidates or empty array
         const sourceData = campaign.results || campaign.candidates || campaign.prospects || [];
+        console.log('[FE] sourceData picked:', Array.isArray(sourceData) ? sourceData.length : sourceData);
+        console.log('[FE] first source item keys:', sourceData[0] ? Object.keys(sourceData[0]) : []);
         
-        // Map candidates to prospects
-        const convertedProspects = sourceData.map((candidate: BackendCandidate) => ({
-          name: candidate.full_name || `${candidate.first_name || ''}`.trim() || 'Unknown',
-          title: candidate.job_title || '',
-          company: candidate.job_company_name || '',
-          email: candidate.work_email,
-          location: candidate.location_name
+        // Map candidates to prospects with correct field mapping
+        const convertedProspects = sourceData.map((c: any) => ({
+          name: (c.full_name || c.first_name || c.name || 'Unknown')?.trim?.() ?? 'Unknown',
+          title: (c.current_title ?? c.job_title ?? c.title ?? '')?.trim?.() ?? '',
+          company: (c.current_company ?? c.job_company_name ?? c.company ?? '')?.trim?.() ?? '',
+          email: c.email ?? c.work_email ?? undefined,
+          location: c.location ?? c.location_name ?? undefined,
         }));
+        console.table(convertedProspects.map(({ name, title, company }: { name: string; title: string; company: string }) => ({ name, title, company })));
         
-        console.log('Converted prospects:', convertedProspects);
         setProspects(convertedProspects);
-        setActiveTab('prospects');
+
+        // Only show hint if we actually found some prospects
+        const count = convertedProspects.length;
+        setProspectsFoundCount(count);
+        setShowProspectsHint(count > 0);
+
         setIsLoading(false);
-        
-        // Log that prospects are ready and user can switch tabs
-        console.log(`Prospects ready (${convertedProspects.length} found), user can switch tabs when ready`);
-        
-      } else if (campaign.status === 'failed') {
-        // Campaign failed
-        console.error('Campaign failed:', campaign.error);
-        alert(`Search failed: ${campaign.error || 'Unknown error occurred'}`);
-        setIsLoading(false);
+        console.log(`Prospects ready (${count}) — user can open the Prospects tab when ready.`);
         
       } else if (campaign.status === 'processing' || campaign.status === 'active' || campaign.status === 'pending') {
         // Still processing, poll again in 2 seconds
@@ -661,6 +661,12 @@ Thanks,
         setTimeout(() => {
           pollForCampaignResults(campaignId);
         }, 2000);
+        
+      } else if (campaign.status === 'failed') {
+        // Campaign failed
+        console.error('Campaign failed:', campaign.error);
+        alert(`Search failed: ${campaign.error || 'Unknown error occurred'}`);
+        setIsLoading(false);
         
       } else {
         // Unknown status, keep polling but with longer interval
@@ -714,6 +720,17 @@ Thanks,
     }
   };
 
+  // New state for prospects hint
+  const [showProspectsHint, setShowProspectsHint] = useState(false);
+  const [prospectsFoundCount, setProspectsFoundCount] = useState(0);
+
+  // Auto-hide effect for the prospects hint
+  React.useEffect(() => {
+    if (!showProspectsHint) return;
+    const id = setTimeout(() => setShowProspectsHint(false), 4000);
+    return () => clearTimeout(id);
+  }, [showProspectsHint]);
+
   // GmailInterface has been moved outside and memoized
 
   const ProspectsList = () => {
@@ -747,27 +764,30 @@ Thanks,
         </div>
         <div className="space-y-3">
           {prospects.map((prospect: Prospect, index: number) => (
-            <div key={index} className="flex items-center space-x-4 p-4 border border-gray-100 rounded-lg hover:border-gray-200 transition-colors duration-200">
+            <div 
+              key={index} 
+              className="flex items-center space-x-4 p-4 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200"
+            >
               <input 
                 type="checkbox" 
                 checked={selectedProspects.has(index)}
                 onChange={() => handleProspectSelect(index)}
-                className="h-4 w-4 rounded border-gray-300" 
+                className="h-4 w-4 rounded border-gray-300 accent-black" 
               />
               <div className="flex-1">
                 <div className="font-medium text-gray-900" style={{ fontFamily: 'Satoshi, sans-serif' }}>
                   {prospect.name}
                 </div>
-                <div className="text-sm text-gray-500" style={{ fontFamily: 'Satoshi, sans-serif' }}>
+                <div className="text-sm text-gray-600" style={{ fontFamily: 'Satoshi, sans-serif' }}>
                   {prospect.title} @ {prospect.company}
                 </div>
                 {prospect.email && (
-                  <div className="text-xs text-gray-400 mt-1" style={{ fontFamily: 'Satoshi, sans-serif' }}>
+                  <div className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Satoshi, sans-serif' }}>
                     {prospect.email}
                   </div>
                 )}
                 {prospect.location && (
-                  <div className="text-xs text-gray-400" style={{ fontFamily: 'Satoshi, sans-serif' }}>
+                  <div className="text-xs text-gray-500" style={{ fontFamily: 'Satoshi, sans-serif' }}>
                     📍 {prospect.location}
                   </div>
                 )}
@@ -882,6 +902,20 @@ Thanks,
           )}
           
           {activeTab === 'prospects' && <ProspectsList />}
+          
+          {/* Prospects found notification */}
+          {activeTab === 'compose' && showProspectsHint && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="fixed bottom-6 right-6 z-50 rounded-md bg-black text-white/95 text-xs sm:text-sm px-3 py-2 shadow-lg shadow-black/30"
+            >
+              <span className="opacity-90">
+                {prospectsFoundCount} prospect{prospectsFoundCount === 1 ? '' : 's'} found —
+              </span>
+              <span className="ml-1">open the <span className="font-semibold">Prospects</span> tab when ready.</span>
+            </div>
+          )}
         </div>
       </main>
       

@@ -6,6 +6,7 @@ import { Campaign } from '../models/Campaign';
 import { User } from '../models/User';
 import { authenticateUser, AuthenticatedRequest } from '../middleware/authMiddleware';
 import { QueueService } from '../services/queueService';
+import { ConversationPayload } from '../types/conversation';
 
 // Helper to properly type async request handlers
 const asyncHandler = <P, ResBody = any, ReqBody = any, ReqQuery = any>(
@@ -31,6 +32,9 @@ interface SearchRequest {
   toField: string;
   bodyField?: string;
   outreachType: 'recruiting' | 'sales';
+  subjectTemplate?: string;
+  bodyTemplate?: string;
+  placeholderValues?: Record<string, string>;
 }
 
 // POST /api/search/prospects
@@ -39,7 +43,14 @@ router.post('/prospects', searchLimiter, /* authenticateUser, */ asyncHandler<{}
   console.log('🔥 [API] Search request received:', req.body);
   
   try {
-    const { toField, bodyField, outreachType } = req.body;
+    const { 
+      toField, 
+      bodyField, 
+      outreachType, 
+      subjectTemplate, 
+      bodyTemplate, 
+      placeholderValues = {} 
+    } = req.body;
 
     // Validate required fields
     if (!toField || !outreachType) {
@@ -66,7 +77,8 @@ router.post('/prospects', searchLimiter, /* authenticateUser, */ asyncHandler<{}
     const mockUser = {
       id: '550e8400-e29b-41d4-a716-446655440000', // Using a valid UUID v4
       name: 'Test User',
-      email: 'test@example.com'
+      email: 'test@example.com',
+      company: 'Test Company' // Added company property
     };
 
     console.log('Processing search request:', { 
@@ -83,39 +95,40 @@ router.post('/prospects', searchLimiter, /* authenticateUser, */ asyncHandler<{}
     );
     console.log('CHK C: after OpenAI parse', conversationData);
 
-    // Use mock user defaults for testing
-    const userDefaults = {
-      recruiter_name: mockUser.name,
-      recruiter_company: 'Test Company',
-      recruiter_title: 'Recruiter',
-      recruiter_mission: 'Finding great candidates'
+    // Create the conversation payload with optional templates
+    const conversationPayload: ConversationPayload = {
+      ...conversationData,
+      subjectTemplate: subjectTemplate || '',
+      bodyTemplate: bodyTemplate || '',
+      placeholders: placeholderValues || {},
+      parsed_at: new Date().toISOString(),
+      confidence_score: 1.0
     };
 
     // Create a new campaign for this search
     console.log('CHK D: before Campaign.create');
     const campaign = await Campaign.create({
-      // Required fields
       user_id: mockUser.id, // Use mock user
       name: `Search: ${toField.substring(0, 50)}`,
-      outreach_type: outreachType,
-      user_name: userDefaults.recruiter_name,
-      user_company: userDefaults.recruiter_company,
-      user_title: userDefaults.recruiter_title,
-      user_mission: userDefaults.recruiter_mission,
-      industry: conversationData.industry || 'Technology',
-      is_remote: conversationData.location?.toLowerCase().includes('remote') ? 'remote' : 'on-site',
-      
-      // Search criteria and conversation data
-      search_criteria: {
+      // Ensure all required fields are provided with defaults if needed
+      user_name: mockUser.name,
+      user_company: mockUser.company || 'Test Company',
+      user_title: 'Recruiter',
+      user_mission: 'Finding great candidates',
+      industry: conversationPayload.industry || 'Technology',
+      is_remote: conversationPayload.location?.toLowerCase().includes('remote') ? 'true' : 'false',
+      // Pass the conversation data with templates
+      conversation_data: conversationPayload,
+      // Additional fields for backward compatibility
+      outreach_type: conversationPayload.outreach_type,
+      role_title: conversationPayload.role_title,
+      experience_level: conversationPayload.experience_level,
+      company_size: conversationPayload.company_size,
+      // Add any additional variables to search params
+      additional_variables: {
+        ...placeholderValues,
         original_query: toField,
-        bodyField,
-        outreachType,
-        timestamp: new Date().toISOString()
-      },
-      conversation_data: {
-        ...conversationData,
-        parsed_at: new Date().toISOString(),
-        confidence_score: 1.0 // Assuming high confidence for now
+        body_field: bodyField || ''
       }
     });
     console.log('CHK E: after Campaign.create', { id: campaign?.id });
@@ -131,8 +144,8 @@ router.post('/prospects', searchLimiter, /* authenticateUser, */ asyncHandler<{}
     try {
       console.log('CHK F: before QueueService.startCampaignProcessing');
       console.log('🔥 [API] Campaign created, queuing job...');
-      // Start campaign processing using correct method name
-      await QueueService.startCampaignProcessing(campaign.id, mockUser.id, conversationData);
+      // Start campaign processing with the conversation payload
+      await QueueService.startCampaignProcessing(campaign.id, mockUser.id, conversationPayload);
       console.log('CHK G: after QueueService.startCampaignProcessing');
 
       // Return immediate response with campaign ID for polling

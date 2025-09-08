@@ -330,9 +330,27 @@ Rules:
         else if (/\bsenior\b/.test(t)) seniority_levels = ['senior'];
       }
 
+      // Ensure skills is always an array
+      const normalizedSkills = extractedData.skills 
+        ? Array.isArray(extractedData.skills) 
+          ? extractedData.skills 
+          : extractedData.skills.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+
+      // Ensure experience_level matches the expected type
+      const validExperienceLevels = ['junior', 'mid', 'senior', 'lead'] as const;
+      const normalizedExperienceLevel = extractedData.experience_level && 
+        validExperienceLevels.includes(extractedData.experience_level.toLowerCase() as any)
+          ? extractedData.experience_level.toLowerCase() as 'junior' | 'mid' | 'senior' | 'lead'
+          : undefined;
+
+      const { experience_level, ...restExtractedData } = extractedData;
+      
       const conversationData: ConversationData = {
+        ...restExtractedData,
         outreach_type: outreachType,
-        ...extractedData,
+        skills: normalizedSkills,
+        experience_level: normalizedExperienceLevel,
         normalized_title,
         title_variants,
         seniority_levels,

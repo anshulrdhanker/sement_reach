@@ -68,7 +68,7 @@ export function validateConversationData(data: Partial<ConversationData>): Valid
     let hasValidSkills = false;
     if (Array.isArray(data.skills)) {
       hasValidSkills = data.skills.length > 0 && 
-                     data.skills.every(skill => {
+                     data.skills.every((skill: string | unknown) => {
                        if (typeof skill !== 'string') return false;
                        return skill.trim().length > 0;
                      });

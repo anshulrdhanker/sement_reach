@@ -57,39 +57,43 @@ class CampaignController {
         return;
       }
 
-      // 4. Prepare campaign data
-      const campaignData: CreateCampaignData = {
-        user_id: userId,
-        outreach_type: conversationData.outreach_type,
-        name: name || `${conversationData.outreach_type} Campaign - ${new Date().toLocaleDateString()}`,
-        
-        // Use new field names that match the interface
+      // 4. Prepare conversation payload
+      const conversationPayload = {
+        ...conversationData,
         user_name: conversationData.user_name || 'User',
         user_company: conversationData.user_company,
         user_title: conversationData.user_title,
         user_mission: conversationData.user_mission,
-        
-        // Conditional fields based on outreach type
         role_title: conversationData.role_title || conversationData.buyer_title || '',
-        role_requirements: conversationData.skills || conversationData.pain_point || '',
-        
-        // Industry and location settings
-        industry: conversationData.industry || '',
-        is_remote: conversationData.location?.toLowerCase().includes('remote') ? 'remote' : 'onsite',
-        job_location: conversationData.location || '',
-        remote_ok: true,
-        target_emails: 50,
-        specific_skills: conversationData.skills ? 
-          conversationData.skills.split(',').map((s: string) => s.trim()) : [],
-        experience_level: conversationData.experience_level || '',
-        company_size: conversationData.company_size || '',
+        skills: Array.isArray(conversationData.skills) 
+          ? conversationData.skills 
+          : (conversationData.skills || '').split(',').map((s: string) => s.trim()).filter(Boolean),
+        experience_level: conversationData.experience_level,
+        company_size: conversationData.company_size,
+        industry: conversationData.industry,
+        location: conversationData.location,
+        is_remote: conversationData.location?.toLowerCase().includes('remote') ? 'true' : 'false',
+        parsed_at: new Date().toISOString(),
+        confidence_score: 1.0,
+        // Include any additional fields from conversationData
+        ...(conversationData.additional_variables || {})
+      };
+
+      // 5. Prepare campaign data
+      const campaignData: CreateCampaignData = {
+        user_id: userId,
+        name: name || `${conversationData.outreach_type} Campaign - ${new Date().toLocaleDateString()}`,
+        conversation_data: conversationPayload,
         
         // Keep additional variables for tracking
         additional_variables: {
-          ...conversationData,
           source: 'api',
           createdAt: new Date().toISOString()
-        }
+        },
+        
+        // For backward compatibility
+        outreach_type: conversationData.outreach_type,
+        status: 'pending'
       };
 
       // 5. Create campaign in database

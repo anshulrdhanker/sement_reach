@@ -11,6 +11,24 @@ const PDL_API_KEY = process.env.PDL_API_KEY;
 
 import { ConversationData } from '../types/conversation';
 
+type SkillsLike = string[] | string | null | undefined;
+
+type PDLPerson = {
+  id: string;
+  first_name?: string;
+  full_name?: string;
+  work_email?: string;
+  job_title?: string;
+  job_company_name?: string;
+  job_company_size?: string;
+  job_company_industry?: string;
+  linkedin_url?: string;
+  location_name?: string;
+  skills?: SkillsLike;
+  inferred_years_experience?: number;
+  [key: string]: any;
+};
+
 // Enhanced candidate interface
 export interface Candidate {
   id: string;
@@ -204,21 +222,7 @@ const JOB_TITLE_EXPANSIONS: Record<string, Array<{title: string, boost: number}>
 };
 interface PDLResponse {
   status: number;
-  data: Array<{
-    id: string;
-    first_name?: string;
-    full_name?: string;
-    work_email?: string;
-    job_title?: string;
-    job_company_name?: string;
-    job_company_size?: string;
-    job_company_industry?: string;
-    linkedin_url?: string;
-    location_name?: string;
-    skills?: string[];
-    inferred_years_experience?: number;
-    [key: string]: any;
-  }>;
+  data: PDLPerson[];
   scroll_token?: string;
   total: number;
 }
@@ -350,32 +354,32 @@ export class PDLService {
       // filter.push({ term: { job_title_role: 'engineering' } });
     }
 
-    // --- 4) REQUIRED SIZE IF IMPLIED OR PROVIDED ---
+    // --- 4) COMPANY SIZE FILTERING ---
     const impliesStartup =
       (data.company_size?.toLowerCase().includes('startup')) ||
-      (data.industry?.toLowerCase().includes('startup')) ||
-      (titleText?.toLowerCase().includes('startup'));
+      (data.industry?.toLowerCase()?.includes('startup')) ||
+      (titleText?.toLowerCase()?.includes('startup'));
     if (impliesStartup) {
       filter.push({ terms: { job_company_size: ['1-10','11-50','51-200'] } });
     } else if (data.company_size) {
-      const sizes = COMPANY_SIZE_MAPPING[data.company_size.toLowerCase()];
-      if (sizes?.length) filter.push({ terms: { job_company_size: sizes } });
+      const companySizes = COMPANY_SIZE_MAPPING[data.company_size.toLowerCase()];
+      if (companySizes?.length) {
+        filter.push({ terms: { job_company_size: companySizes } });
+      }
     }
 
-    // --- 5) NICE-TO-HAVE SKILLS (recruiting only) ---
-    if (data.outreach_type === 'recruiting' && data.skills) {
-      const skills = data.skills.split(/[,&]|\sand\s/).map(s => s.trim().toLowerCase()).filter(Boolean);
-      skills.forEach(s => should.push({ match: { skills: s } }));
-    }
-
-    // --- 6) NICE-TO-HAVE INDUSTRY (no broad pass-1 explosion) ---
+    // --- 5) INDUSTRY MAPPING ---
     if (data.industry) {
-      const clean = data.industry.toLowerCase().trim();
-      const mapped = (INDUSTRY_MAPPINGS[clean] || [clean])
-        .filter(v => v && v.toLowerCase() !== 'ai');
-      [...new Set(mapped.map(v => v.toLowerCase()))].forEach(ind =>
-        should.push({ match: { job_company_industry: ind } })
-      );
+      const cleanIndustry = data.industry.toLowerCase().trim();
+      const mappedIndustries = INDUSTRY_MAPPINGS[cleanIndustry] || [cleanIndustry];
+      const uniqueIndustries = [...new Set(mappedIndustries
+        .filter(v => v && v.toLowerCase() !== 'ai')
+        .map(v => v.toLowerCase())
+      )];
+      
+      uniqueIndustries.forEach(industry => {
+        should.push({ match: { job_company_industry: industry } });
+      });
     }
 
     // No broad fallbacks in pass 1
@@ -659,6 +663,20 @@ export class PDLService {
     }
   }
 
+  /** Normalize skills input to string array */
+  private static normalizeSkills(input: SkillsLike): string[] {
+    if (Array.isArray(input)) {
+      return input.filter((s): s is string => Boolean(s));
+    }
+    if (typeof input === 'string') {
+      return input
+        .split(/[,&]|\sand\s/)
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+    }
+    return [];
+  }
+
   /** Parse and score results */
   private static parseAndScoreResults(response: PDLResponse, conversationData: ConversationData): Candidate[] {
     if (!response.data || response.data.length === 0) return [];
@@ -672,14 +690,14 @@ export class PDLService {
         id: person.id,
         first_name: safeFirst,
         full_name: person.full_name || safeFirst,
-        work_email: person.work_email || undefined, // Keep email if present, but don't validate it here
+        work_email: person.work_email || undefined,
         job_title: person.job_title,
         job_company_name: person.job_company_name,
         job_company_size: person.job_company_size,
         job_company_industry: person.job_company_industry,
         linkedin_url: person.linkedin_url,
         location_name: person.location_name,
-        skills: person.skills,
+        skills: this.normalizeSkills(person.skills),
         experience_years: person.inferred_years_experience,
         relevance_score: this.calculateRelevanceScore(person, conversationData)
       };
@@ -698,7 +716,7 @@ export class PDLService {
     if (targetTitle && person.job_title) {
       score += this.calculateTitleSimilarity(person.job_title, targetTitle) * 40;
     }
-    if (data.outreach_type === 'recruiting' && data.skills && person.skills) {
+    if (data.outreach_type === 'recruiting') {
       score += this.calculateSkillsMatch(person.skills, data.skills) * 30;
     }
     if (data.company_size && person.job_company_size) {
@@ -721,14 +739,21 @@ export class PDLService {
     return commonWords.length / Math.max(personWords.length, targetWords.length);
   }
 
-  private static calculateSkillsMatch(personSkills: string[], targetSkills: string): number {
-    if (!personSkills || personSkills.length === 0) return 0;
-    const targetArray = targetSkills.toLowerCase().split(/[,&]|\sand\s/).map(s => s.trim());
-    const personArray = personSkills.map(s => s.toLowerCase());
-    const matches = targetArray.filter(skill =>
-      personArray.some(pSkill => pSkill.includes(skill) || skill.includes(pSkill))
+  private static calculateSkillsMatch(
+    personSkills: SkillsLike,
+    targetSkills: SkillsLike
+  ): number {
+    const personLower = this.normalizeSkills(personSkills).map((s: string) => s.toLowerCase());
+    if (personLower.length === 0) return 0;
+
+    const targetLower = this.normalizeSkills(targetSkills).map((s: string) => s.toLowerCase());
+    if (targetLower.length === 0) return 0;
+
+    const matches = targetLower.filter((skill: string) =>
+      personLower.some((p: string) => p.includes(skill) || skill.includes(p))
     );
-    return matches.length / targetArray.length;
+
+    return matches.length / targetLower.length;
   }
 
   private static calculateSizeMatch(personSize: string, targetSize: string): number {

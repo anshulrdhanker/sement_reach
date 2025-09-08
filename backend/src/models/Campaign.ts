@@ -1,58 +1,40 @@
 import { supabase } from '../config/database';
 import { CampaignStatus } from '../services/queueTypes';
+import { ConversationPayload } from '../types/conversation';
 
 export interface CreateCampaignData {
-  // Existing required fields
+  // Required fields
   user_id: string;
   name: string;
-  outreach_type: 'sales' | 'recruiting';
-  user_name: string;
-  user_company: string;
-  user_title: string;
-  user_mission: string;
-  industry: string;
-  is_remote: string;
   
-  // Existing optional fields
-  role_title?: string;
-  role_requirements?: string;
-  job_location?: string;
-  salary_range?: string;
-  remote_ok?: boolean;
-  target_emails?: number;
-  specific_skills?: string[];
-  experience_level?: string;
-  company_size?: string;
-  additional_variables?: Record<string, string>;
+  // All campaign data is now in conversation_data
+  conversation_data: ConversationPayload;
   
-  // Search criteria from user input
-  search_criteria?: {
-    original_query: string;      // The raw "to" field input
-    bodyField?: string;          // User's personal info input
-    outreachType: 'recruiting' | 'sales';
-    timestamp?: string;          // When the search was made
-  };
+  // Template and search fields
+  subject_template?: string | null;
+  body_template?: string | null;
+  placeholder_values?: Record<string, string>;
+  search_criteria?: any;
+  status?: 'pending' | 'searching' | 'completed' | 'failed' | 'active' | 'partial';
   
-  // Parsed conversation data from OpenAI
-  conversation_data?: {
-    // Recruiting fields
-    role_title?: string;
-    skills?: string;
-    experience_level?: string;
-    
-    // Sales fields  
-    buyer_title?: string;
-    pain_point?: string;
-    
-    // Shared fields
-    company_size?: string;
-    industry?: string;
-    location?: string;
-    
-    // Meta fields
-    confidence_score?: number;   // How confident OpenAI was in parsing
-    parsed_at?: string;          // When OpenAI parsed this
-  };
+  // Optional fields for backward compatibility
+  outreach_type?: 'sales' | 'recruiting'; // Will be overridden by conversation_data
+  user_name?: string;                     // Will be overridden by conversation_data
+  user_company?: string;                  // Will be overridden by conversation_data
+  user_title?: string;                    // Will be overridden by conversation_data
+  user_mission?: string;                  // Will be overridden by conversation_data
+  industry?: string;                      // Will be overridden by conversation_data
+  is_remote?: string;                     // Will be overridden by conversation_data
+  role_title?: string;                    // Will be overridden by conversation_data
+  role_requirements?: string;             // Will be overridden by conversation_data
+  job_location?: string;                  // Will be overridden by conversation_data
+  salary_range?: string;                  // Will be overridden by conversation_data
+  remote_ok?: boolean;                    // Will be overridden by conversation_data
+  target_emails?: number;                 // Will be overridden by conversation_data
+  specific_skills?: string[];             // Will be overridden by conversation_data
+  experience_level?: string;              // Will be overridden by conversation_data
+  company_size?: string;                  // Will be overridden by conversation_data
+  additional_variables?: Record<string, string>; // Will be overridden by conversation_data
 }
 
 export interface CampaignProfile {
@@ -61,33 +43,24 @@ export interface CampaignProfile {
   name: string;
   outreach_type: 'sales' | 'recruiting';
   
-  // Role-specific fields
-  role_title: string | null;
-  role_requirements: string | null;
-  buyer_title: string | null;
-  
-  // User/company fields
-  user_company: string;
-  user_title: string;
-  user_mission: string;
-  
-  // Campaign settings
-  industry: string;
-  location: string;
-  job_location: string | null;
-  salary_range: string | null;
-  remote_ok: boolean;
-  target_emails: number;
-  status: CampaignStatus;
+  // Campaign metadata
+  status: CampaignStatus | 'pending' | 'searching' | 'completed' | 'failed' | 'active' | 'partial';
   pdl_search_params: any;
   total_found: number;
   total_sent: number;
+  target_emails: number;
   created_at: string;
+  updated_at: string;
   completed_at: string | null;
   
-  // Skills and experience
-  experience_level: string | null;
-  company_size: string | null;
+  // Template and search fields
+  subject_template: string | null;
+  body_template: string | null;
+  placeholder_values: Record<string, string>;
+  search_criteria: any;
+  
+  // All conversation data including templates
+  conversation_data: ConversationPayload;
   
   // Additional metadata (stored in pdl_search_params)
   additional_variables?: Record<string, string>;
@@ -107,36 +80,41 @@ export class Campaign {
    */
   static async create(campaignData: CreateCampaignData): Promise<CampaignProfile | null> {
     try {
+      // Ensure conversation_data has all required fields
+      const conversationData = campaignData.conversation_data;
+      
+      // Set default values if not provided
+      const now = new Date().toISOString();
+      if (!conversationData.parsed_at) {
+        conversationData.parsed_at = now;
+      }
+      if (conversationData.confidence_score === undefined) {
+        conversationData.confidence_score = 1.0;
+      }
+
       const { data, error } = await supabase
         .from('campaigns')
         .insert([{
           user_id: campaignData.user_id,
           name: campaignData.name,
-          outreach_type: campaignData.outreach_type,
-          role_title: campaignData.role_title || null,
-          role_requirements: campaignData.role_requirements || null,
-          buyer_title: campaignData.outreach_type === 'sales' ? campaignData.role_title : null, // buyer_title maps to role_title for sales
-          user_company: campaignData.user_company,
-          user_title: campaignData.user_title,
-          user_mission: campaignData.user_mission,
-          industry: campaignData.industry,
-          location: campaignData.job_location || '',
-          job_location: campaignData.job_location || null,
-          salary_range: campaignData.salary_range || null,
-          remote_ok: campaignData.remote_ok || false,
-          target_emails: campaignData.target_emails || 50,
-          experience_level: campaignData.experience_level || null,
-          company_size: campaignData.company_size || null,
-          status: 'draft',
+          outreach_type: conversationData.outreach_type,
+          status: campaignData.status || 'pending',
           pdl_search_params: {
-            // Store search-related data and additional variables
-            specific_skills: campaignData.specific_skills,
-            additional_variables: campaignData.additional_variables,
+            // Store any additional search parameters here
+            additional_variables: campaignData.additional_variables || {}
           },
           total_found: 0,
           total_sent: 0,
-          created_at: new Date().toISOString(),
+          target_emails: campaignData.target_emails || 50,
+          subject_template: campaignData.subject_template ?? null,
+          body_template: campaignData.body_template ?? null,
+          placeholder_values: campaignData.placeholder_values || {},
+          search_criteria: campaignData.search_criteria || {},
+          created_at: now,
+          updated_at: now,
           completed_at: null,
+          // Store all conversation data including templates
+          conversation_data: conversationData,
         }])
         .select()
         .single();
@@ -260,25 +238,26 @@ export class Campaign {
   static async getCampaignVariables(campaignId: string): Promise<Record<string, string> | null> {
     try {
       const campaign = await this.findById(campaignId);
-      if (!campaign) return null;
+      if (!campaign || !campaign.conversation_data) return null;
 
+      const conv = campaign.conversation_data;
       const variables: Record<string, string> = {
-        role_title: campaign.role_title || campaign.buyer_title || '',
-        user_company: campaign.user_company,
-        user_title: campaign.user_title,
-        user_mission: campaign.user_mission,
-        industry: campaign.industry,
-        location: campaign.location,
-        job_location: campaign.job_location || '',
-        salary_range: campaign.salary_range || '',
-        experience_level: campaign.experience_level || '',
-        company_size: campaign.company_size || '',
-        outreach_type: campaign.outreach_type,
+        role_title: conv.role_title || conv.buyer_title || '',
+        user_company: conv.user_company || '',
+        user_title: conv.user_title || '',
+        user_mission: conv.user_mission || '',
+        industry: conv.industry || '',
+        location: conv.location || '',
+        job_location: conv.location || '', // Using location for job_location
+        salary_range: '', // Not in conversation_data
+        experience_level: conv.experience_level || '',
+        company_size: conv.company_size || '',
+        outreach_type: conv.outreach_type,
       };
 
-      // Add specific skills from pdl_search_params if available
-      if (campaign.pdl_search_params?.specific_skills && Array.isArray(campaign.pdl_search_params.specific_skills)) {
-        variables.required_skills = campaign.pdl_search_params.specific_skills.join(', ');
+      // Add skills if available
+      if (Array.isArray(conv.skills) && conv.skills.length > 0) {
+        variables.required_skills = conv.skills.join(', ');
       }
 
       // Add any additional variables from pdl_search_params
@@ -330,15 +309,17 @@ export class Campaign {
   static async generatePDLSearchParams(campaignId: string): Promise<any> {
     try {
       const campaign = await this.findById(campaignId);
-      if (!campaign) return null;
+      if (!campaign || !campaign.conversation_data) return null;
 
-      // Build PDL search parameters based on campaign variables
+      const conv = campaign.conversation_data;
+      
+      // Build PDL search parameters based on conversation data
       const searchParams: any = {
         required: []
       };
 
       // Add role/title criteria
-      const titleToSearch = campaign.role_title || campaign.buyer_title;
+      const titleToSearch = conv.role_title || conv.buyer_title;
       if (titleToSearch) {
         searchParams.required.push({
           field: "job_title",
@@ -347,39 +328,39 @@ export class Campaign {
         });
       }
 
-      // Add skills criteria from pdl_search_params
-      if (campaign.pdl_search_params?.specific_skills && Array.isArray(campaign.pdl_search_params.specific_skills)) {
+      // Add skills criteria
+      if (Array.isArray(conv.skills) && conv.skills.length > 0) {
         searchParams.required.push({
           field: "skills",
           condition: "contains",
-          value: campaign.pdl_search_params.specific_skills
+          value: conv.skills
         });
       }
 
       // Add industry criteria
-      if (campaign.industry) {
+      if (conv.industry) {
         searchParams.required.push({
           field: "industry",
           condition: "contains",
-          value: campaign.industry
+          value: conv.industry
         });
       }
 
       // Add location criteria
-      if (campaign.location && campaign.location !== 'remote') {
+      if (conv.location && conv.location.toLowerCase() !== 'remote') {
         searchParams.required.push({
           field: "location_region",
           condition: "contains",
-          value: campaign.location
+          value: conv.location
         });
       }
 
       // Add experience level criteria
-      if (campaign.experience_level) {
+      if (conv.experience_level) {
         searchParams.required.push({
           field: "job_title_levels",
           condition: "contains",
-          value: campaign.experience_level
+          value: conv.experience_level
         });
       }
 
@@ -394,24 +375,27 @@ export class Campaign {
    * Create campaign variables object for email generation
    */
   static createEmailVariables(campaign: CampaignProfile, candidate: any): Record<string, string> {
+    const conv = campaign.conversation_data;
     return {
-      // Campaign variables
-      role_title: campaign.role_title || campaign.buyer_title || '',
-      user_company: campaign.user_company,
-      user_title: campaign.user_title,
-      user_mission: campaign.user_mission,
-      location: campaign.job_location || campaign.location || '',
-      salary_range: campaign.salary_range || '',
+      // Campaign variables from conversation data
+      role_title: conv.role_title || conv.buyer_title || '',
+      user_company: conv.user_company || '',
+      user_title: conv.user_title || '',
+      user_mission: conv.user_mission || '',
+      location: conv.location || '',
+      salary_range: '', // Not in conversation_data
+      industry: conv.industry || '',
       
       // Candidate variables
       name: candidate.full_name || '',
-      skills: candidate.selected_skill || (candidate.skills && candidate.skills.length > 0 ? candidate.skills[0] : ''),
+      skills: candidate.selected_skill || 
+             (Array.isArray(candidate.skills) ? candidate.skills.join(', ') : ''),
       current_company: candidate.current_company || '',
       current_title: candidate.current_title || '',
       candidate_location: candidate.location || '',
       experience_years: candidate.experience_years ? candidate.experience_years.toString() : '',
       
-      // Additional variables from pdl_search_params
+      // Additional variables from pdl_search_params if needed
       ...(campaign.pdl_search_params?.additional_variables || {})
     };
   }
