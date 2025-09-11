@@ -3,6 +3,7 @@
 import React, { useState, useCallback, memo } from 'react';
 import { Mail, Send, X, Minus, Square, Users, CornerDownLeft } from 'lucide-react';
 import { useChipExtractor, type ChipStates } from '@/hooks/useChipExtractor';
+import ProspectCard, { type Prospect as ProspectCardType } from '@/components/ProspectCard';
 
 // Props interface for GmailInterface
 interface GmailInterfaceProps {
@@ -434,10 +435,18 @@ GmailInterface.displayName = 'GmailInterface';
 
 interface Prospect {
   name: string;
-  title: string;
-  company: string;
+  title?: string;
+  company?: string;
   email?: string;
   location?: string;
+  
+  // extras for the card (all optional)
+  linkedin_url?: string;
+  company_size?: string;
+  industry?: string;
+  experience_years?: number | null;
+  skills?: string[];
+  _raw?: Record<string, any>;
 }
 
 interface BackendCandidate {
@@ -635,15 +644,48 @@ Thanks,
         console.log('[FE] sourceData picked:', Array.isArray(sourceData) ? sourceData.length : sourceData);
         console.log('[FE] first source item keys:', sourceData[0] ? Object.keys(sourceData[0]) : []);
         
-        // Map candidates to prospects with correct field mapping
-        const convertedProspects = sourceData.map((c: any) => ({
-          name: (c.full_name || c.first_name || c.name || 'Unknown')?.trim?.() ?? 'Unknown',
-          title: (c.current_title ?? c.job_title ?? c.title ?? '')?.trim?.() ?? '',
-          company: (c.current_company ?? c.job_company_name ?? c.company ?? '')?.trim?.() ?? '',
-          email: c.email ?? c.work_email ?? undefined,
-          location: c.location ?? c.location_name ?? undefined,
-        }));
-        console.table(convertedProspects.map(({ name, title, company }: { name: string; title: string; company: string }) => ({ name, title, company })));
+        // Map candidates to prospects with correct field mapping and fallbacks
+        const convertedProspects: Prospect[] = sourceData.map((c: any) => {
+          const name =
+            (c.full_name || c.first_name || c.name || "Unknown")?.trim?.() ?? "Unknown";
+
+          const title =
+            (c.current_title ?? c.job_title ?? c.title ?? "")?.trim?.() ?? "";
+
+          const company =
+            (c.current_company ?? c.job_company_name ?? c.company ?? "")?.trim?.() ?? "";
+
+          const email = c.email ?? c.work_email ?? undefined;
+
+          const location = c.location ?? c.location_name ?? undefined;
+
+          const linkedin_url =
+            c.linkedin_url ?? c.linkedin ?? c.linkedin_profile ?? undefined;
+
+          const company_size = c.job_company_size ?? c.company_size ?? undefined;
+
+          const industry = c.job_company_industry ?? c.industry ?? undefined;
+
+          const experience_years =
+            c.inferred_years_experience ?? c.experience_years ?? null;
+
+          const skills = Array.isArray(c.skills) ? c.skills : [];
+
+          return {
+            name,
+            title,
+            company,
+            email,
+            location,
+            linkedin_url,
+            company_size,
+            industry,
+            experience_years,
+            skills,
+            _raw: c, // handy for debugging/expansion later
+          };
+        });
+        console.table(convertedProspects.map(({ name, title = '', company = '' }) => ({ name, title, company })));
         
         setProspects(convertedProspects);
 
@@ -765,32 +807,17 @@ Thanks,
         <div className="space-y-3">
           {prospects.map((prospect: Prospect, index: number) => (
             <div 
-              key={index} 
-              className="flex items-center space-x-4 p-4 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200"
+              key={index}
+              className="flex items-start gap-4 p-4 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200"
             >
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 checked={selectedProspects.has(index)}
                 onChange={() => handleProspectSelect(index)}
-                className="h-4 w-4 rounded border-gray-300 accent-black" 
+                className="mt-1 h-4 w-4 rounded border-gray-300 accent-black"
               />
               <div className="flex-1">
-                <div className="font-medium text-gray-900" style={{ fontFamily: 'Satoshi, sans-serif' }}>
-                  {prospect.name}
-                </div>
-                <div className="text-sm text-gray-600" style={{ fontFamily: 'Satoshi, sans-serif' }}>
-                  {prospect.title} @ {prospect.company}
-                </div>
-                {prospect.email && (
-                  <div className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Satoshi, sans-serif' }}>
-                    {prospect.email}
-                  </div>
-                )}
-                {prospect.location && (
-                  <div className="text-xs text-gray-500" style={{ fontFamily: 'Satoshi, sans-serif' }}>
-                    📍 {prospect.location}
-                  </div>
-                )}
+                <ProspectCard prospect={prospect as ProspectCardType} />
               </div>
             </div>
           ))}

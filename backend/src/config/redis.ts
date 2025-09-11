@@ -5,8 +5,8 @@ import { REDIS_CONFIG } from './config';
 const redisConfig = {
   host: REDIS_CONFIG.HOST,
   port: REDIS_CONFIG.PORT,
-  password: REDIS_CONFIG.PASSWORD,
-  maxRetriesPerRequest: 3,
+  password: REDIS_CONFIG.PASSWORD || undefined,
+  maxRetriesPerRequest: null, // BullMQ requirement
   retryDelayOnFailure: 1000,
   connectTimeout: 60000,
 };

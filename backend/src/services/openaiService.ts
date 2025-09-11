@@ -1,16 +1,27 @@
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
+import fetch, { Headers, Request, Response } from 'node-fetch';
+// @ts-ignore - node-fetch v3 types are ESM only
 
 dotenv.config();
+
+// Polyfill fetch if missing (ts-node sometimes hides it)
+if (!globalThis.fetch) {
+  (globalThis as any).fetch = fetch as any;
+  (globalThis as any).Headers = Headers as any;
+  (globalThis as any).Request = Request as any;
+  (globalThis as any).Response = Response as any;
+}
 
 // Validate OpenAI API key on startup
 if (!process.env.OPENAI_API_KEY) {
   throw new Error('OPENAI_API_KEY environment variable is required');
 }
 
-// Initialize OpenAI client
+// Initialize OpenAI client with explicit fetch
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  fetch: fetch as unknown as typeof globalThis.fetch, // Type assertion for compatibility
 });
 
 // Types for our recruiting use cases
