@@ -375,19 +375,21 @@ const GmailInterface = memo(({
           
           {/* Single footer with search button */}
           <div className="px-4 pb-4 pt-4 border-t border-gray-200">
-            {!hasTyped && !isLoading && (
+            {isLoading ? (
+              <div className="text-xs text-gray-500 mb-2 text-center">
+                Customize the email template to your liking before moving to <span className="font-bold">Prospects</span>.
+              </div>
+            ) : !hasTyped ? (
               <div className="text-xs text-gray-500 mb-2 text-center">
                 Search for who you're looking for in the <span className="font-bold">To</span> box
               </div>
-            )}
-
-            {hasTyped && toField.trim() && !isLoading && (
+            ) : toField.trim() ? (
               <div className="text-xs text-gray-500 mb-2 text-center">
                 Press <span className="font-medium text-gray-700">Enter</span> or click 
                 <CornerDownLeft className="inline-block h-3.5 w-3.5 mx-1 align-text-bottom" />
                 to continue
               </div>
-            )}
+            ) : null}
 
             <div className="flex items-center justify-end">
               <button
