@@ -15,11 +15,11 @@ function runTest() {
         console.log('Testing database connection...');
         const isConnected = yield (0, database_1.testConnection)();
         if (isConnected) {
-            console.log('✅ Database connection test passed!');
+            console.log(' Database connection test passed');
             process.exit(0);
         }
         else {
-            console.error('❌ Database connection test failed!');
+            console.error(' Database connection test failed');
             process.exit(1);
         }
     });
