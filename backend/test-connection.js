@@ -10,17 +10,17 @@ async function testConnection() {
   
   try {
     // Test 1: Basic connection test
-    console.log('\n🔍 Testing basic connection...');
+    console.log('\n Testing basic connection...');
     const { data: testData, error: testError } = await supabase
       .from('test_table')
       .select('*')
       .limit(1);
     
     // If we get here, the connection is working
-    console.log('✅ Basic connection test passed!');
+    console.log(' Basic connection test passed!');
     
     // Test 2: Try to create a test row
-    console.log('\n🧪 Testing write operation...');
+    console.log('\n Testing write operation...');
     const testRow = {
       test_field: 'Connection test at ' + new Date().toISOString()
     };
@@ -31,18 +31,18 @@ async function testConnection() {
       .select();
     
     if (insertError) {
-      console.warn('⚠️  Could not write to test_table (this might be expected if the table does not exist)');
+      console.warn('  Could not write to test_table (this might be expected if the table does not exist)');
       console.warn('   Error details:', insertError.message);
     } else {
-      console.log('✅ Successfully wrote test row:', insertData);
+      console.log(' Successfully wrote test row:', insertData);
     }
     
-    console.log('\n🎉 Supabase connection is working correctly!');
+    console.log('\n Supabase connection is working correctly!');
     
   } catch (error) {
     if (error.code === '42P01') {
-      console.log('✅ Connection successful, but test_table does not exist (this is expected)');
-      console.log('\n🎉 Supabase connection is working correctly!');
+      console.log(' Connection successful, but test_table does not exist (this is expected)');
+      console.log('\n Supabase connection is working correctly');
     } else {
       console.error('❌ Error testing connection:', error.message);
       if (error.details) console.error('Details:', error.details);
